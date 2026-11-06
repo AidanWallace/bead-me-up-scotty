@@ -1,0 +1,149 @@
+name: Sync upstream image
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      bd_version:
+        description: 'beads CLI version, without the v prefix (or "latest")'
+        required: false
+        default: 'latest'
+      node_version:
+        description: 'Node.js version'
+        required: false
+        default: '26.4.0'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.upstream.outputs.tag }}
+      exists: ${{ steps.check.outputs.exists }}
+      image: ${{ steps.image.outputs.image }}
+      bd_version: ${{ steps.build-args.outputs.bd_version }}
+      node_version: ${{ steps.build-args.outputs.node_version }}
+    steps:
+      - name: Get latest upstream release tag
+        id: upstream
+        run: |
+          tag=$(curl -fsSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/brendan-appstart/bead-me-up-scotty/releases/latest | jq -r .tag_name)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve build args
+        id: build-args
+        env:
+          BD_VERSION_INPUT: ${{ inputs.bd_version || 'latest' }}
+          NODE_VERSION_INPUT: ${{ inputs.node_version || '26.4.0' }}
+        run: |
+          bd_version="$BD_VERSION_INPUT"
+          if [ "$bd_version" = "latest" ]; then
+            bd_version=$(curl -fsSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              https://api.github.com/repos/gastownhall/beads/releases/latest | jq -r '.tag_name | ltrimstr("v")')
+          fi
+          echo "bd_version=$bd_version" >> "$GITHUB_OUTPUT"
+          echo "node_version=$NODE_VERSION_INPUT" >> "$GITHUB_OUTPUT"
+
+      - name: Compute lowercase image ref
+        id: image
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if this tag was already published
+        id: check
+        run: |
+          if docker manifest inspect "${{ steps.image.outputs.image }}:${{ steps.upstream.outputs.tag }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.exists == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runs-on: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: brendan-appstart/bead-me-up-scotty
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            BD_VERSION=${{ needs.prepare.outputs.bd_version }}
+            NODE_VERSION=${{ needs.prepare.outputs.node_version }}
+          outputs: type=image,name=${{ needs.prepare.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest list
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.tag }} \
+            -t ${{ needs.prepare.outputs.image }}:latest \
+            $(printf '${{ needs.prepare.outputs.image }}@sha256:%s ' *)
