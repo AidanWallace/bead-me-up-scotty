@@ -7,6 +7,8 @@ export interface Meta {
   humanAllowlist: string[];
   pollIntervalMs: number;
   gamification?: boolean;
+  aiProvider?: "auto" | "opencode" | "claude";
+  importOpencodeConfig?: boolean;
   /** Viewer mode (SCOTTY_READ_ONLY): the server refuses writes; the UI hides them. */
   readOnly?: boolean;
   /** Label prefix (SCOTTY_LANE_PREFIX) that partitions work into Focus-view lane chips. */
@@ -206,6 +208,14 @@ export const api = {
 
   gamification: (projectId: string) =>
     request<GamificationData>(`${base(projectId)}/gamification`),
+
+  agentStatus: () =>
+    request<{ installed: boolean; running: boolean }>("/api/opencode/status", { cache: "no-store" }),
+  agentSession: (projectId: string, beadId?: string) =>
+    request<{ sessionId: string; connectUrl: string; sessionUrl: string }>("/api/opencode/session", {
+      method: "POST",
+      body: JSON.stringify({ projectId, beadId }),
+    }),
 
   assist: (projectId: string, id: string) =>
     request<AssistResult>(`${base(projectId)}/beads/${enc(id)}/assist`, { method: "POST" }),

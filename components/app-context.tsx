@@ -28,6 +28,10 @@ interface AppContextValue {
   openCreate: (opts?: { parent?: string; type?: BeadType }) => void;
   /** Jump to the Epics screen and focus a specific epic (bead 55b). */
   openEpic: (epicId: string) => void;
+  /** Bead the Agent view should give the session as context (null = none). */
+  agentBeadId: string | null;
+  /** Switch to the Agent view, optionally focused on a bead. */
+  openAgent: (beadId?: string) => void;
 }
 
 const AppContext = React.createContext<AppContextValue | null>(null);

@@ -1,0 +1,44 @@
+services:
+  bead-me-up-scotty:
+    build: .
+    container_name: bead-me-up-scotty
+    ports:
+      - 3000:3000
+      # Agent view: the browser's iframe talks to the OpenCode server inside the
+      # container through this port. Keep it on the host's loopback (the server is
+      # password protected, but there is no reason to expose it to your network).
+      - 127.0.0.1:4096:4096
+    # On Linux, if bd cannot write to the mounted .beads directory, run as your
+    # host user: export UID GID, then uncomment.
+    # user: "${UID}:${GID}"
+    environment:
+      # The project Scotty opens by default (the mount below).
+      BEADS_REPO: /data
+    #  Attribution for writes made from the UI (defaults to git/OS user).
+    #  BEADS_ACTOR: ${BEADS_ACTOR:-}
+    #  Refuse all project writes (viewer mode).
+    #  SCOTTY_READ_ONLY: "1"
+    #  Hostnames other than localhost/IPs that may reach Scotty (reverse proxy).
+    #  The Agent view still needs http://localhost:3000 or http://127.0.0.1:3000.
+    #  SCOTTY_ALLOWED_HOSTS: scotty.example.com
+    #  Providers that use your environment for credentials (e.g. Amazon Bedrock):
+    #  AWS_PROFILE: ${AWS_PROFILE:-}
+    #  AWS_REGION: ${AWS_REGION:-}
+    volumes:
+      # Your beads project: BEADS_REPO=/path/to/project docker compose up
+      # - ${BEADS_REPO:-.}:/data
+      # Scotty's own settings and its private OpenCode data (project list, actor,
+      # AI provider, agent sessions), kept across container re-creates.
+      - scotty-config:/home/nextjs/.config/bead-me-up-scotty
+      # Your OpenCode config, read-only. Scotty only copies agents, skills and
+      # providers from it; it never writes here.
+      - ${HOME}/.config/opencode:/home/nextjs/.config/opencode:ro
+      # Same directory again at its host path, so absolute symlinks inside it
+      # (e.g. agents/foo.md -> /Users/you/.config/opencode/...) resolve in the
+      # container. Skip this if your config has no symlinks.
+      - ${HOME}/.config/opencode:${HOME}/.config/opencode:ro
+      # AWS credentials for Bedrock-style providers (uncomment if you use them).
+      # - ${HOME}/.aws:/home/nextjs/.aws:ro
+
+volumes:
+  scotty-config:

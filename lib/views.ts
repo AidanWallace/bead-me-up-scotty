@@ -1,4 +1,4 @@
-export const VIEWS = ["board", "focus", "list", "epics", "graph", "insights", "activity", "needsyou", "achievements", "publish", "settings"] as const;
+export const VIEWS = ["board", "focus", "list", "epics", "graph", "insights", "activity", "needsyou", "agent", "achievements", "publish", "settings"] as const;
 export type View = (typeof VIEWS)[number];
 export function isView(value: string | null | undefined): value is View {
   return typeof value === "string" && (VIEWS as readonly string[]).includes(value);
@@ -19,12 +19,16 @@ const VIEW_NAV: ViewNavItem[] = [
   { key: "insights", label: "Insights", icon: "milestone" },
   { key: "activity", label: "Activity", icon: "comment" },
   { key: "needsyou", label: "Needs You", icon: "user" },
+  { key: "agent", label: "Agent", icon: "feature" },
   { key: "achievements", label: "Achievements", icon: "feature" },
   { key: "publish", label: "Publish", icon: "rocket" },
   { key: "settings", label: "Settings", icon: "settings" },
 ];
 
 // Shared by the sidebar and the command palette so both offer the same views.
-export function navViews(gamification: boolean): ViewNavItem[] {
-  return VIEW_NAV.filter((view) => view.key !== "achievements" || gamification);
+export function navViews(gamification: boolean, opts: { agent?: boolean } = {}): ViewNavItem[] {
+  const agent = opts.agent ?? true;
+  return VIEW_NAV.filter(
+    (view) => (view.key !== "achievements" || gamification) && (view.key !== "agent" || agent),
+  );
 }

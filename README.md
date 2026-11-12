@@ -186,6 +186,16 @@ Set `SCOTTY_LANE_PREFIX=ctx:` to enable lane filters from labels such as
 `ctx:frontend`. Without a prefix, lane filters are hidden. If a selected lane
 vanishes during a live refresh, Focus shows all lanes again.
 
+### Agent (OpenCode)
+
+The **Agent** view embeds a live [OpenCode](https://opencode.ai) session for the current project, and "Ask agent" on a bead opens one with that bead as context. "Refine with AI" also runs through OpenCode (falling back to the Claude CLI).
+
+- **Pinned and isolated.** Scotty ships its own exact-pinned OpenCode (`@opencode/cli`) and starts a private server on `127.0.0.1` with a random password. It keeps its own data, state and config under Scotty's config directory, so your normal OpenCode sessions, service and settings are never touched.
+- **Your config is copied, never linked.** On each start Scotty copies the agents and skills from `~/.config/opencode` and the `providers` block of your `opencode.jsonc`. Plugins, MCP servers and `auth.json` are **not** imported; providers that need a login ask you to sign in once inside the panel. Turn the import off in Settings.
+- **Scotty's own agent.** A `scotty` agent and `scotty-ui` skill are added for these sessions only. `bd` commands are allowed, other shell commands ask first, and `git push` is denied.
+- **Settings.** Choose Auto / OpenCode / Claude for Refine with AI. Set `SCOTTY_OPENCODE_BIN` to use a different OpenCode binary.
+- **Limits.** The Agent view needs a real project (not the demo), is hidden in read-only mode, and works only when Scotty is opened via `localhost` or `127.0.0.1`. In Docker it needs the extra published port from `docker-compose.yml` (see Docker, below).
+
 ### Read-only viewing
 
 Enable **Read-only mode** in Settings to monitor progress without editing beads.
@@ -263,6 +273,16 @@ config dir to keep them:
 ```bash
 -v "$HOME/.config/bead-me-up-scotty:/home/nextjs/.config/bead-me-up-scotty"
 ```
+
+#### Agent in Docker
+
+The image ships the pinned OpenCode CLI. Use the included `docker-compose.yml`:
+
+```bash
+BEADS_REPO=/path/to/project docker compose up --build
+```
+
+It sets `BEADS_REPO=/data`, publishes OpenCode's fixed port on the host's loopback only (`127.0.0.1:4096`, set inside the image by `SCOTTY_OPENCODE_PORT`/`SCOTTY_OPENCODE_HOST`), keeps Scotty's settings and agent sessions in the `scotty-config` volume, and mounts your `~/.config/opencode` read-only (twice: at the container's config path and at its host path, so absolute symlinks inside it resolve). Open Scotty at `http://localhost:3000`. Providers that read your environment (Bedrock) need `AWS_PROFILE` and a read-only `~/.aws` mount; see the commented lines in the compose file. With plain `docker run`, add `-p 127.0.0.1:4096:4096`.
 
 Container limitations:
 

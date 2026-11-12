@@ -18,6 +18,7 @@ import { reviewLinks } from "@/lib/review-links";
 import { DescriptionContent } from "@/components/description-content";
 import { ReviewLinkChips } from "@/components/review-link-chips";
 import type { Bead } from "@/lib/schema";
+import { useAgentSignals } from "@/hooks/use-agent-signals";
 import { isSubmitKey } from "@/lib/keyboard-shortcuts";
 
 /**
@@ -30,7 +31,8 @@ import { isSubmitKey } from "@/lib/keyboard-shortcuts";
  *      don't sit invisibly waiting on the board (bead 8qc / gh-6).
  */
 export function NeedsYouView() {
-  const { beads, index } = useApp();
+  const { beads, index, openAgent } = useApp();
+  const { attention } = useAgentSignals();
   const inbox = React.useMemo(() => beads.filter(needsHuman), [beads]);
   const gates = React.useMemo(
     () => beads.filter((b) => readyHumanGate(b, index)),
@@ -47,6 +49,20 @@ export function NeedsYouView() {
           · {total === 0 ? "nothing waiting" : `${total} waiting on you`}
         </span>
       </div>
+      {attention > 0 && (
+        <div className="flex items-center gap-3 border-b border-border bg-[var(--brand-weak)] px-6 py-2 text-[13px]">
+          <Icon name="feature" size={15} style={{ color: "var(--brand)" }} />
+          <span className="font-[550]">Agent is waiting on you</span>
+          <span className="flex-1" />
+          <button
+            onClick={() => openAgent()}
+            className="h-7 rounded-lg px-3 text-[12.5px] font-[550] text-white"
+            style={{ background: "var(--brand)" }}
+          >
+            Open Agent
+          </button>
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {total === 0 ? (
           <div className="p-10 text-center text-[13px] text-[var(--text-3)]">

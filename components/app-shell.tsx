@@ -18,6 +18,7 @@ import { GraphView } from "@/components/graph-view";
 import { InsightsView } from "@/components/insights-view";
 import { ActivityView } from "@/components/activity-view";
 import { NeedsYouView } from "@/components/needs-you-view";
+import { AgentView } from "@/components/agent-view";
 import { AchievementsView } from "@/components/achievements-view";
 import { PublishView } from "@/components/publish-view";
 import { SettingsView } from "@/components/settings-view";
@@ -176,6 +177,25 @@ export function AppShell({ projectId }: { projectId: string }) {
     [setView],
   );
 
+  const [agentBeadId, setAgentBeadId] = React.useState<string | null>(null);
+  // A plain visit to Agent carries no bead context; only openAgent(beadId) sets one.
+  const selectView = React.useCallback(
+    (next: View) => {
+      if (next === "agent") setAgentBeadId(null);
+      setView(next);
+    },
+    [setView],
+  );
+  const openAgent = React.useCallback(
+    (beadId?: string) => {
+      setOpenStack([]); // close the detail drawer
+      setDetailRequest(null);
+      setAgentBeadId(beadId ?? null);
+      setView("agent");
+    },
+    [setView],
+  );
+
   const openCreateFromKeyboard = React.useCallback(() => openCreate(), [openCreate]);
   const closeOverlays = React.useCallback(() => {
     setOpenStack([]);
@@ -185,9 +205,9 @@ export function AppShell({ projectId }: { projectId: string }) {
 
   const errorMessage = error ? (error as Error).message : undefined;
   const setMobileView = React.useCallback((next: View) => {
-    setView(next);
+    selectView(next);
     setMobileNavOpen(false);
-  }, [setView]);
+  }, [selectView]);
   React.useEffect(() => {
     const desktop = window.matchMedia("(min-width: 48rem)");
     const onChange = (event: MediaQueryListEvent) => {
@@ -214,6 +234,8 @@ export function AppShell({ projectId }: { projectId: string }) {
         pushDetail,
         openCreate,
         openEpic,
+        agentBeadId,
+        openAgent,
       }}
     >
       <div className="flex h-full flex-col overflow-hidden bg-background text-foreground text-sm">
@@ -254,7 +276,7 @@ export function AppShell({ projectId }: { projectId: string }) {
         <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar
           view={view}
-          onView={setView}
+          onView={selectView}
           kind={data?.meta?.kind}
           projectId={projectId}
           live={live}
@@ -285,6 +307,7 @@ export function AppShell({ projectId }: { projectId: string }) {
               {view === "insights" && <InsightsView />}
               {view === "activity" && <ActivityView />}
               {view === "needsyou" && <NeedsYouView />}
+              {view === "agent" && !readOnly && <AgentView />}
               {view === "achievements" && <AchievementsView />}
               {view === "publish" && <PublishView />}
               {view === "settings" && <SettingsView />}
@@ -318,7 +341,7 @@ export function AppShell({ projectId }: { projectId: string }) {
         // Until the beads load, openId is still the raw ?bead= value from the URL.
         openId={openId && index.has(openId) ? openId : null}
         selectIdAction={selectBead}
-        setViewAction={setView}
+        setViewAction={selectView}
         openDetailAction={openDetail}
         openCreateAction={openCreateFromKeyboard}
         closeOverlaysAction={closeOverlays}

@@ -21,6 +21,8 @@ export async function GET(_req: Request, { params }: Ctx) {
         humanAllowlist: cfg.humanAllowlist,
         pollIntervalMs: cfg.pollIntervalMs,
         gamification: cfg.gamification,
+        aiProvider: cfg.aiProvider ?? "auto",
+        importOpencodeConfig: cfg.importOpencodeConfig ?? true,
         readOnly: isReadOnly(_req),
         lanePrefix: lanePrefix(),
       },

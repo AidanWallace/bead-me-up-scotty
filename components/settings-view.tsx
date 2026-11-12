@@ -271,6 +271,7 @@ function SettingsForm({ data }: { data: DoctorResponse }) {
       <NotificationsCard />
 
       <GamificationCard />
+      <AiProviderCard />
 
       <KeyboardShortcutsCard />
 
@@ -408,6 +409,44 @@ function UpdatesCard() {
         Stable follows published versions and includes release notes. Development follows the latest
         commits on main and requires a Git checkout. Updates only install when you choose Update now.
       </p>
+    </Card>
+  );
+}
+
+function AiProviderCard() {
+  const { meta } = useApp();
+  const qc = useQueryClient();
+  const save = useMutation({
+    mutationFn: (patch: Record<string, unknown>) => api.saveConfig(patch),
+    onSuccess: () => {
+      toast.success("Settings saved");
+      qc.invalidateQueries({ queryKey: ["beads"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  return (
+    <Card title="AI provider">
+      <label className="flex items-center justify-between gap-3 text-[13px]">
+        <span>Provider for Refine with AI</span>
+        <select aria-label="AI provider" value={meta?.aiProvider ?? "auto"} disabled={save.isPending}
+          onChange={e => save.mutate({ aiProvider: e.target.value })}
+          className="rounded-lg border border-border bg-[var(--surface-2)] p-2">
+          <option value="auto">Auto (OpenCode, then Claude)</option>
+          <option value="opencode">OpenCode</option>
+          <option value="claude">Claude</option>
+        </select>
+      </label>
+      <label className="mt-3 flex cursor-pointer select-none items-center gap-[9px]">
+        <input
+          type="checkbox"
+          checked={meta?.importOpencodeConfig ?? true}
+          disabled={save.isPending}
+          onChange={(e) => save.mutate({ importOpencodeConfig: e.target.checked })}
+          className="h-4 w-4 cursor-pointer disabled:opacity-40"
+          style={{ accentColor: "var(--brand)" }}
+        />
+        <span className="text-[13px] text-[var(--text-2)]">Import my OpenCode agents, skills and providers</span>
+      </label>
     </Card>
   );
 }

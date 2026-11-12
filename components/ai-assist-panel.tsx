@@ -10,13 +10,13 @@ import { DescriptionContent } from "@/components/description-content";
 import type { Bead } from "@/lib/schema";
 
 /**
- * In-UI version of the /refine-beads workflow: ask the local Claude CLI to
+ * In-UI version of the /refine-beads workflow: ask the configured AI provider to
  * suggest a refined description (with acceptance criteria + a checklist),
  * labels, and likely duplicates. Read-only until the user confirms — only the
  * description is written, via the normal update path.
  */
 export function AiAssistPanel({ bead }: { bead: Bead }) {
-  const { projectId, pushDetail } = useApp();
+  const { projectId, pushDetail, openAgent } = useApp();
   const update = useUpdateBead();
   const [result, setResult] = React.useState<AssistResult | null>(null);
 
@@ -41,6 +41,7 @@ export function AiAssistPanel({ bead }: { bead: Bead }) {
 
   return (
     <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-2">
       <button
         onClick={() => assist.mutate()}
         disabled={assist.isPending}
@@ -49,6 +50,14 @@ export function AiAssistPanel({ bead }: { bead: Bead }) {
         <Icon name="feature" size={14} style={{ color: "var(--brand)" }} />
         {assist.isPending ? "Refining with AI…" : "Refine with AI"}
       </button>
+      <button
+        onClick={() => openAgent(bead.id)}
+        className="inline-flex h-8 items-center gap-[6px] rounded-lg border border-border bg-[var(--surface-2)] px-3 text-[12.5px] font-[550] text-[var(--text-2)] hover:bg-[var(--surface-3)]"
+      >
+        <Icon name="feature" size={14} style={{ color: "var(--brand)" }} />
+        Ask agent
+      </button>
+      </div>
 
       {result && (
         <div className="mt-2 rounded-[10px] border bg-[var(--surface-2)] p-3" style={{ borderColor: "var(--brand)" }}>

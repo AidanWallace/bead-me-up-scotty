@@ -20,6 +20,16 @@ FROM node:${NODE_VERSION}-slim AS eleventy
 WORKDIR /eleventy
 RUN npm install --no-save @11ty/eleventy@3.1.6
 
+# ── OpenCode: pinned agent CLI for the Agent view ────────────────────────────
+# Next's standalone tracing never includes it (the app resolves it at runtime),
+# so install it, at the exact version package.json pins, into its own tree and
+# point SCOTTY_OPENCODE_BIN at it in the runner. npm picks the glibc binary.
+FROM node:${NODE_VERSION}-slim AS opencode
+WORKDIR /opencode
+COPY package.json /tmp/package.json
+RUN npm install --no-save --no-audit --no-fund \
+      "@opencode/cli@$(node -p "require('/tmp/package.json').dependencies['@opencode/cli']")"
+
 # ── Builder: install deps and build the Next.js app ──────────────────────────
 FROM node:${NODE_VERSION}-slim AS builder
 
@@ -53,6 +63,13 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV HOME=/home/nextjs
 ENV XDG_CONFIG_HOME=/home/nextjs/.config
+# Agent view: the OpenCode server inside the container must listen on a fixed
+# port, on the container interface, so the browser's iframe can reach it through
+# a published port. Publish it on the host's loopback only (see docker-compose.yml);
+# it is password protected either way.
+ENV SCOTTY_OPENCODE_BIN=/opt/opencode/node_modules/@opencode/cli/bin/opencode.exe
+ENV SCOTTY_OPENCODE_PORT=4096
+ENV SCOTTY_OPENCODE_HOST=0.0.0.0
 
 # Run as a non-root user for security and give bd a real home/config dir.
 # The home/config dirs are world-writable so `docker run --user <uid>:<gid>`
@@ -61,9 +78,9 @@ ENV XDG_CONFIG_HOME=/home/nextjs/.config
 # uid other than 1001 from even traversing /home/nextjs.
 RUN groupadd --system --gid 1001 nodejs \
  && useradd --system --uid 1001 --gid nodejs --create-home --home-dir /home/nextjs nextjs \
- && mkdir -p /home/nextjs/.config \
+ && mkdir -p /home/nextjs/.config/bead-me-up-scotty \
  && chown -R nextjs:nodejs /home/nextjs \
- && chmod 0777 /home/nextjs /home/nextjs/.config
+ && chmod 0777 /home/nextjs /home/nextjs/.config /home/nextjs/.config/bead-me-up-scotty
 
 # Copy the standalone server, static assets, and public files.
 # Next's file tracing puts a PARTIAL @11ty/eleventy (cmd.cjs without its deps)
@@ -77,12 +94,16 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # Copy the prebuilt bd CLI into the image
 COPY --from=bd --chown=nextjs:nodejs /usr/local/bin/bd /usr/local/bin/bd
 
+# OpenCode CLI + Scotty's agent/skill assets for the Agent view.
+COPY --from=opencode --chown=nextjs:nodejs /opencode/node_modules /opt/opencode/node_modules
+COPY --chown=nextjs:nodejs opencode-assets ./opencode-assets
+
 # Eleventy for the showcase publisher. /node_modules sits on eleventyBin()'s
 # upward search path and never collides with the standalone node_modules.
 COPY --from=eleventy --chown=nextjs:nodejs /eleventy/node_modules /node_modules
 
 USER nextjs
 
-EXPOSE 3000
+EXPOSE 3000 4096
 
 CMD ["node", "server.js"]

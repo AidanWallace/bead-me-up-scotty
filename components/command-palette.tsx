@@ -211,7 +211,7 @@ function PaletteBody({
             </Command.Group>
 
             <Command.Group heading="Go to">
-              {navViews(!!meta?.gamification).map((v) => (
+              {navViews(!!meta?.gamification, { agent: !readOnly }).map((v) => (
                 <Item
                   key={v.key}
                   icon={v.icon}

@@ -1,6 +1,9 @@
 import "server-only";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { resolveProvider, type AiProvider, type AiProviderPref } from "./ai-provider.ts";
+import { ensureServer, OpencodeUnavailableError, resolveOpencodeBin } from "./opencode/server.ts";
+import { generateText, OpencodeApiError } from "./opencode/client.ts";
 
 const pExecFile = promisify(execFile);
 const MAX_OUT = 8 * 1024 * 1024;
@@ -147,14 +150,93 @@ function extractJson(out: string): string {
   return out.slice(start, end + 1);
 }
 
-export async function assistBead(input: AssistInput): Promise<AssistResult> {
-  if (!(await isClaudeAvailable())) {
+type Avail = { opencode: boolean; claude: boolean };
+export interface AssistDeps {
+  runOpencode?: (prompt: string, dir: string | null) => Promise<string>;
+  runClaude?: (prompt: string) => Promise<string>;
+  avail?: () => Promise<Avail>;
+}
+
+async function defaultAvail(): Promise<Avail> {
+  return { opencode: resolveOpencodeBin() !== null, claude: await isClaudeAvailable() };
+}
+
+/** Map opencode transport/API failures onto AiError; other errors pass through. */
+export function mapOpencodeError(err: unknown): unknown {
+  if (err instanceof OpencodeApiError) return new AiError(err.message, "opencode_failed");
+  return err;
+}
+
+export const OPENCODE_TIMEOUT_MS = 120_000;
+
+export async function runOpencodeWithTimeout(
+  run: (signal: AbortSignal) => Promise<string>,
+  timeoutMs: number = OPENCODE_TIMEOUT_MS,
+): Promise<string> {
+  const ctrl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      ctrl.abort();
+      reject(new AiError("The OpenCode agent timed out.", "timeout"));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([run(ctrl.signal), timeout]);
+  } catch (err) {
+    throw mapOpencodeError(err);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function defaultRunOpencode(prompt: string, dir: string | null): Promise<string> {
+  return runOpencodeWithTimeout(async (signal) => {
+    const h = await ensureServer();
+    return generateText(h, prompt, dir ?? process.cwd(), signal);
+  });
+}
+
+async function defaultRunClaude(prompt: string): Promise<string> {
+  return runClaude(prompt, 120_000);
+}
+
+const FALLBACK_CODES = new Set(["not_installed", "start_failed", "claude_unavailable", "opencode_failed"]);
+function isFallbackError(err: unknown): boolean {
+  return (
+    (err instanceof AiError || err instanceof OpencodeUnavailableError) &&
+    !!err.code &&
+    FALLBACK_CODES.has(err.code)
+  );
+}
+
+export async function assistBead(
+  input: AssistInput,
+  ctx: { directory: string | null; pref?: AiProviderPref },
+  deps: AssistDeps = {},
+): Promise<AssistResult> {
+  const runners = {
+    opencode: (p: string) => (deps.runOpencode ?? defaultRunOpencode)(p, ctx.directory),
+    claude: (p: string) => (deps.runClaude ?? defaultRunClaude)(p),
+  };
+  const avail = await (deps.avail ?? defaultAvail)();
+  const first = resolveProvider(ctx.pref, avail);
+  if (!first) {
     throw new AiError(
-      `The Claude CLI ("${CLAUDE_BIN}") was not found on PATH. Install Claude Code or set CLAUDE_BIN.`,
+      `No AI provider found. Install OpenCode, or Claude Code (set CLAUDE_BIN if it is not on PATH).`,
       "claude_unavailable",
     );
   }
-  const stdout = await runClaude(buildPrompt(input), 120_000);
+  const other: AiProvider = first === "opencode" ? "claude" : "opencode";
+  const prompt = buildPrompt(input);
+
+  let stdout: string;
+  try {
+    stdout = await runners[first](prompt);
+  } catch (err) {
+    if (!avail[other] || !isFallbackError(err)) throw err;
+    stdout = await runners[other](prompt);
+  }
 
   let parsed: Partial<AssistResult>;
   try {

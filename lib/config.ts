@@ -39,6 +39,10 @@ export interface AppConfig {
    * follows the computed default, even if an older version wrote it to disk.
    */
   humanActorChosen?: boolean;
+  /** Which AI backend refines beads. "auto" prefers OpenCode, then Claude. */
+  aiProvider?: "auto" | "opencode" | "claude";
+  /** Import the user's own OpenCode agents, skills and providers (default true). */
+  importOpencodeConfig?: boolean;
 }
 
 /**
@@ -90,7 +94,7 @@ export function lanePrefix(): string | null {
   return process.env.SCOTTY_LANE_PREFIX || null;
 }
 
-function configDir(): string {
+export function configDir(): string {
   const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
   return path.join(base, "bead-me-up-scotty");
 }
@@ -269,6 +273,10 @@ export function getConfig(): AppConfig {
         : {},
     gamification: typeof onDisk?.gamification === "boolean" ? onDisk.gamification : d.gamification,
     humanActorChosen: onDisk?.humanActorChosen === true,
+    aiProvider:
+      onDisk?.aiProvider === "opencode" || onDisk?.aiProvider === "claude" ? onDisk.aiProvider : "auto",
+    importOpencodeConfig:
+      typeof onDisk?.importOpencodeConfig === "boolean" ? onDisk.importOpencodeConfig : true,
   };
 
   // One-time migration: back-fill the registry from the legacy single repoPath
@@ -306,7 +314,12 @@ export function closeActor(assignee: string | null | undefined): string {
 
 /** Update global settings (actor / allowlist / poll). Project registry has its own mutators. */
 export function saveConfig(
-  patch: Partial<Pick<AppConfig, "humanActor" | "humanAllowlist" | "pollIntervalMs" | "gamification">>,
+  patch: Partial<
+    Pick<
+      AppConfig,
+      "humanActor" | "humanAllowlist" | "pollIntervalMs" | "gamification" | "aiProvider" | "importOpencodeConfig"
+    >
+  >,
 ): AppConfig {
   const next = { ...getConfig(), ...patch };
   if (patch.humanActor !== undefined) next.humanActorChosen = true;

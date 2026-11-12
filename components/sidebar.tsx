@@ -20,6 +20,7 @@ import { UpdateIndicator } from "@/components/update-indicator";
 import { ResizeHandle } from "@/components/resize-handle";
 import { useResizableWidth } from "@/hooks/use-resizable-width";
 import { cn } from "@/lib/utils";
+import { useAgentSignals } from "@/hooks/use-agent-signals";
 import { navViews } from "@/lib/views";
 
 function githubIssueUrl(kind: "bug" | "feature"): string {
@@ -58,7 +59,8 @@ export function Sidebar({
   onProjectNavigate?: () => void;
 }) {
   const { mode, toggle } = useTheme();
-  const { meta, beads, index } = useApp();
+  const { meta, beads, index, readOnly } = useApp();
+  const agentSignals = useAgentSignals();
   const actor = meta?.humanActor ?? "you";
   const epicCount = beads.filter((b) => b.issue_type === "epic").length;
   // "Needs You" = agent-flagged beads (bd human) + ready human-approval gates.
@@ -93,7 +95,7 @@ export function Sidebar({
 
 
       <nav className="flex flex-col gap-[2px]">
-        {navViews(!!meta?.gamification).map((n) => {
+        {navViews(!!meta?.gamification, { agent: !readOnly }).map((n) => {
           const active = view === n.key;
           return (
             <button
@@ -110,6 +112,23 @@ export function Sidebar({
               <span className="flex-1">{n.label}</span>
               {n.key === "epics" && epicCount > 0 && (
                 <span className="font-mono text-[11px] text-[var(--text-3)]">{epicCount}</span>
+              )}
+              {n.key === "agent" && agentSignals.working && (
+                <span
+                  data-testid="agent-working"
+                  title="Agent is working"
+                  className="h-2 w-2 animate-pulse rounded-full"
+                  style={{ background: "var(--brand)" }}
+                />
+              )}
+              {n.key === "agent" && agentSignals.attention > 0 && (
+                <span
+                  data-testid="agent-attention"
+                  className="min-w-[18px] rounded-full px-[6px] py-px text-center text-[11px] font-semibold text-white"
+                  style={{ background: "var(--brand)" }}
+                >
+                  {agentSignals.attention}
+                </span>
               )}
               {n.key === "needsyou" && needsYouCount > 0 && (
                 <span
