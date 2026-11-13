@@ -92,6 +92,40 @@ try {
     const ocPort = Number(new URL(srcUrl).port);
     let log = await (await stubFetch(s, ocPort, "/__log")).json();
     assert.equal(log.filter((e) => e.path.startsWith("/auth/connect/")).length, 1, "exactly one connect per visit");
+    // it is a right-hand side panel: docked beside the page, which stays visible
+    const pb = await page.getByTestId("agent-panel").boundingBox();
+    const mb = await page.locator("main").boundingBox();
+    assert.ok(pb.x >= mb.x + mb.width - 2, "panel sits to the right of main");
+    assert.ok(mb.width > 300, "page content stays usable beside the panel");
+    // resizable: drag the handle left across the page, then right across the iframe
+    const w0 = (await page.getByTestId("agent-panel").boundingBox()).width;
+    const hb = await page.getByTestId("agent-resize").boundingBox();
+    const hx = hb.x + hb.width / 2, hy = hb.y + hb.height / 2;
+    await page.mouse.move(hx, hy);
+    await page.mouse.down();
+    await page.mouse.move(hx - 150, hy, { steps: 8 });
+    await page.mouse.up();
+    const w1 = (await page.getByTestId("agent-panel").boundingBox()).width;
+    assert.ok(w1 > w0 + 100, `dragging left widens the panel (${w0} -> ${w1})`);
+    const hb2 = await page.getByTestId("agent-resize").boundingBox();
+    await page.mouse.move(hb2.x + 5, hy);
+    await page.mouse.down();
+    await page.mouse.move(hb2.x + 200, hy, { steps: 8 }); // over the iframe
+    await page.mouse.up();
+    const w2 = (await page.getByTestId("agent-panel").boundingBox()).width;
+    assert.ok(w2 < w1 - 100, `dragging right over the iframe still resizes (${w1} -> ${w2})`);
+    await page.getByTestId("agent-resize").focus();
+    await page.keyboard.press("ArrowLeft");
+    assert.ok((await page.getByTestId("agent-panel").boundingBox()).width > w2 + 10, "arrow key widens");
+    await page.getByTestId("agent-resize").dblclick();
+    assert.equal(Math.round((await page.getByTestId("agent-panel").boundingBox()).width), 440, "double-click resets");
+    await page.reload();
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
+    await page.getByTestId("agent-frame").waitFor();
+    await page.getByRole("button", { name: "Close agent panel" }).click();
+    await page.getByTestId("agent-panel").waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
+    await page.getByTestId("agent-frame").waitFor();
 
     // (c)
     const emit = (type, sessionID = "ses_stub1") =>
@@ -149,6 +183,8 @@ try {
 
     // plain nav click: new session, no new context PUT
     const putsBefore = p2.length;
+    await page.getByRole("button", { name: "Agent", exact: true }).click(); // toggles the open panel closed
+    await page.getByTestId("agent-panel").waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Agent", exact: true }).click();
     await page.getByTestId("agent-frame").waitFor();
     await page.frameLocator('[data-testid="agent-frame"]').getByText("stub-opencode session").waitFor();

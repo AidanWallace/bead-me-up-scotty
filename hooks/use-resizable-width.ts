@@ -63,5 +63,19 @@ export function useResizableWidth(opts: {
     [clamp, deltaFactor, storageKey, setWidth],
   );
 
-  return { width, startResize };
+  // Programmatic resize (keyboard, double-click reset): clamped and persisted.
+  const resizeTo = React.useCallback(
+    (w: number) => {
+      const next = clamp(w);
+      setWidth(next);
+      try {
+        window.localStorage.setItem(storageKey, String(Math.round(next)));
+      } catch {
+        /* ignore */
+      }
+    },
+    [clamp, setWidth, storageKey],
+  );
+
+  return { width, startResize, resizeTo };
 }

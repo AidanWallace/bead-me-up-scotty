@@ -3,6 +3,7 @@ import * as React from "react";
 import { useApp } from "@/components/app-context";
 import { Icon } from "@/components/icons";
 import { api, ApiError } from "@/lib/api-client";
+import { useResizableWidth } from "@/hooks/use-resizable-width";
 
 type Session = Awaited<ReturnType<typeof api.agentSession>>;
 type Result =
@@ -24,8 +25,26 @@ function startSession(projectId: string, beadId: string | null): Promise<Session
 }
 
 /** The embedded OpenCode web UI. Starts a fresh session for the current bead (if any). */
-export function AgentView() {
+export function AgentView({ onClose }: { onClose: () => void }) {
+  const { width, startResize, resizeTo } = useResizableWidth({
+    storageKey: "scotty-agent-panel-width",
+    defaultWidth: 440,
+    min: 320,
+    max: 900,
+    deltaFactor: -1,
+  });
   const { projectId, agentBeadId, readOnly } = useApp();
+  const [dragging, setDragging] = React.useState(false);
+  React.useEffect(() => {
+    if (!dragging) return;
+    const stop = () => setDragging(false);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [dragging]);
   const [attempt, setAttempt] = React.useState(0);
   const key = `${projectId}\u0000${agentBeadId ?? ""}\u0000${attempt}`;
   const [answered, setAnswered] = React.useState<State>({ key: "", result: null });
@@ -48,13 +67,51 @@ export function AgentView() {
   const retry = () => setAttempt((n) => n + 1);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-6 py-4">
-        <Icon name="feature" size={18} className="text-[var(--text-2)]" />
-        <h1 className="text-[15px] font-[650]">Agent</h1>
+    <aside
+      data-testid="agent-panel"
+      aria-label="Agent"
+      style={{ ["--agent-w" as string]: `${width}px` }}
+      className="fixed inset-0 z-40 flex flex-col border-l border-border bg-[var(--surface)] md:static md:inset-auto md:z-auto md:w-[var(--agent-w)] md:shrink-0"
+    >
+      <div
+        data-testid="agent-resize"
+        onPointerDown={(e) => {
+          // The overlay (keeps the iframe from eating the drag) starts on first
+          // movement, so a plain double-click still reaches the handle.
+          const begin = () => setDragging(true);
+          const cancel = () => window.removeEventListener("pointermove", begin);
+          window.addEventListener("pointermove", begin, { once: true });
+          window.addEventListener("pointerup", cancel, { once: true });
+          startResize(e);
+        }}
+        onDoubleClick={() => resizeTo(440)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") { e.preventDefault(); resizeTo(width + 24); }
+          if (e.key === "ArrowRight") { e.preventDefault(); resizeTo(width - 24); }
+        }}
+        tabIndex={0}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize agent panel"
+        aria-valuenow={Math.round(width)}
+        aria-valuemin={320}
+        aria-valuemax={900}
+        title="Drag to resize · double-click to reset"
+        className="group absolute inset-y-0 -left-[5px] z-10 hidden w-[10px] cursor-col-resize touch-none justify-center outline-none md:flex"
+      >
+        <div className={`h-full w-[3px] transition-colors group-hover:bg-[var(--brand)] group-focus-visible:bg-[var(--brand)] ${dragging ? "bg-[var(--brand)]" : ""}`} />
+      </div>
+      {dragging && <div className="fixed inset-0 z-50 cursor-col-resize" />}
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <Icon name="feature" size={16} className="text-[var(--text-2)]" />
+        <h1 className="text-[14px] font-[650]">Agent</h1>
         {agentBeadId && (
           <span className="font-mono text-[12px] text-[var(--text-3)]">· {agentBeadId}</span>
         )}
+        <span className="flex-1" />
+        <button onClick={onClose} title="Close agent panel" aria-label="Close agent panel" className="text-[var(--text-3)] hover:text-[var(--text)]">
+          <Icon name="x" size={15} />
+        </button>
       </div>
       <div className="min-h-0 flex-1">
         {readOnly ? (
@@ -67,7 +124,7 @@ export function AgentView() {
           <AgentFrame key={state.session.sessionId} session={state.session} />
         )}
       </div>
-    </div>
+    </aside>
   );
 }
 

@@ -179,21 +179,37 @@ export function AppShell({ projectId }: { projectId: string }) {
 
   const [agentBeadId, setAgentBeadId] = React.useState<string | null>(null);
   // A plain visit to Agent carries no bead context; only openAgent(beadId) sets one.
+  // The agent is a right-hand panel, not a page: choosing "Agent" toggles it
+  // and leaves the current view in place.
+  const [agentOpen, setAgentOpen] = React.useState(false);
+  // Old ?view=agent links and saved last-view values show the board with the panel open.
+  const panelOpen = agentOpen || view === "agent";
+  const page: View = view === "agent" ? "board" : view;
+  const closeAgent = React.useCallback(() => {
+    setAgentOpen(false);
+    if (view === "agent") setView("board");
+  }, [view, setView]);
   const selectView = React.useCallback(
     (next: View) => {
-      if (next === "agent") setAgentBeadId(null);
+      if (next === "agent") {
+        setAgentBeadId(null);
+        if (panelOpen) closeAgent();
+        else setAgentOpen(true);
+        return;
+      }
       setView(next);
     },
-    [setView],
+    [setView, panelOpen, closeAgent],
   );
   const openAgent = React.useCallback(
     (beadId?: string) => {
       setOpenStack([]); // close the detail drawer
       setDetailRequest(null);
       setAgentBeadId(beadId ?? null);
-      setView("agent");
+      setAgentOpen(true);
+      if (view === "agent") setView("board");
     },
-    [setView],
+    [view, setView],
   );
 
   const openCreateFromKeyboard = React.useCallback(() => openCreate(), [openCreate]);
@@ -297,19 +313,18 @@ export function AppShell({ projectId }: { projectId: string }) {
             </div>
           ) : (
             <>
-              {view === "board" && <Board />}
-              {view === "list" && <ListView />}
-              {view === "epics" && (
+              {page === "board" && <Board />}
+              {page === "list" && <ListView />}
+              {page === "epics" && (
                 <EpicsView focusEpic={focusEpic} onFocusHandledAction={clearFocusEpic} />
               )}
-              {view === "focus" && <FocusView />}
-              {view === "graph" && <GraphView />}
-              {view === "insights" && <InsightsView />}
-              {view === "activity" && <ActivityView />}
-              {view === "needsyou" && <NeedsYouView />}
-              {view === "agent" && !readOnly && <AgentView />}
-              {view === "achievements" && <AchievementsView />}
-              {view === "publish" && <PublishView />}
+              {page === "focus" && <FocusView />}
+              {page === "graph" && <GraphView />}
+              {page === "insights" && <InsightsView />}
+              {page === "activity" && <ActivityView />}
+              {page === "needsyou" && <NeedsYouView />}
+              {page === "achievements" && <AchievementsView />}
+              {page === "publish" && <PublishView />}
               {view === "settings" && <SettingsView />}
             </>
           )}
@@ -324,6 +339,7 @@ export function AppShell({ projectId }: { projectId: string }) {
             onClose={closeDetail}
           />
         </main>
+        {panelOpen && !readOnly && <AgentView onClose={closeAgent} />}
         </div>
       </div>
 
